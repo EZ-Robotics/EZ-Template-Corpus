@@ -1,0 +1,17 @@
+name: Remove my project
+description: Take a project, or everything an account or org owns, off the list.
+title: "Remove a project"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We'll take it off as soon as one of us sees this.
+
+        Issues are public, and anyone watching this repo gets an email with what you write here. If you'd rather not name your project in public, add an empty file named `.ez-corpus-optout` to the top folder of your repo instead, or message a maintainer on the [robotics is ez Discord](https://discord.gg/EHjXBcK2Gy) or email [jess@roboticsisez.com](mailto:jess@roboticsisez.com).
+  - type: input
+    id: link
+    attributes:
+      label: Link to the project, account, or org
+      placeholder: https://github.com/owner/repo
+    validations:
+      required: true

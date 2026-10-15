@@ -1,0 +1,53 @@
+name: Remove a project
+
+# Maintainers run this from the Actions tab when someone asks to be taken off the list.
+# The link is hidden in the log, and the commit message doesn't name the project.
+
+on:
+  workflow_dispatch:
+    inputs:
+      link:
+        description: "Link to the project (or to an account, to remove everything it owns)"
+        required: true
+      put_back:
+        description: "Put it back instead (only when the owner asks)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency: update   # waits for an update to finish first
+
+jobs:
+  remove:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hide the link in the log
+        run: echo "::add-mask::$(jq -r '.inputs.link' "$GITHUB_EVENT_PATH")"
+
+      - uses: actions/checkout@v7
+
+      - name: Remove or put back
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LINK: ${{ inputs.link }}
+          PUT_BACK: ${{ inputs.put_back }}
+        run: |
+          if [ "$PUT_BACK" = "true" ]; then
+            python3 scripts/corpus.py unremove "$LINK"
+            echo "MESSAGE=Put back 1 project on request" >> "$GITHUB_ENV"
+          else
+            python3 scripts/corpus.py remove "$LINK"
+            echo "MESSAGE=Remove 1 project on request" >> "$GITHUB_ENV"
+          fi
+
+      - name: Commit
+        run: |
+          git diff --quiet -- corpus.csv blocklist.csv && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add corpus.csv blocklist.csv
+          git commit -m "$MESSAGE"
+          git pull --rebase
+          git push

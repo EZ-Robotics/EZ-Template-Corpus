@@ -1,0 +1,66 @@
+name: Update the list
+
+# Every other Monday this re-checks every project, looks for new ones, and commits the list.
+# The log only has totals in it, never names.
+
+on:
+  schedule:
+    - cron: "17 16 * * 1"  # Mondays at 9:17 am Pacific (16:17 UTC). The first step skips every other week.
+  workflow_dispatch:         # or run it any time from the Actions tab
+
+permissions:
+  contents: write
+
+concurrency: update
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350     # GitHub limits lookups, so the first run can take a few hours
+    steps:
+      - name: Skip odd weeks
+        id: week
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ] && [ $(( 10#$(date -u +%V) % 2 )) -eq 1 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.week.outputs.skip != 'true'
+
+      - run: python3 scripts/test_corpus.py
+        if: steps.week.outputs.skip != 'true'
+
+      # Remembers which repos were already checked, so later runs only look at what changed.
+      - uses: actions/cache/restore@v5
+        if: steps.week.outputs.skip != 'true'
+        with:
+          path: .cache
+          key: seen-${{ github.run_id }}
+          restore-keys: seen-
+
+      - name: Update
+        if: steps.week.outputs.skip != 'true'
+        timeout-minutes: 330
+        continue-on-error: true   # if it runs out of time, keep what it got through
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # only sees public repos. Never use a personal token.
+          CHECK_SUMMARY: ${{ runner.temp }}/summary.txt
+        run: python3 scripts/corpus.py update
+
+      - uses: actions/cache/save@v5
+        if: always() && steps.week.outputs.skip != 'true'
+        with:
+          path: .cache
+          key: seen-${{ github.run_id }}
+
+      - name: Commit
+        if: steps.week.outputs.skip != 'true'
+        run: |
+          git diff --quiet -- corpus.csv blocklist.csv && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add corpus.csv blocklist.csv
+          git commit -m "Update the list" -m "$(cat "$RUNNER_TEMP/summary.txt" 2>/dev/null || echo 'Ran out of time partway. The rest gets checked next time.')"
+          git pull --rebase
+          git push
