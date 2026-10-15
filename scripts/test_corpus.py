@@ -3,12 +3,15 @@
 Run with: python3 scripts/test_corpus.py
 """
 import base64
+import http.client
+import io
 import json
 import os
 import shutil
 import sys
 import tempfile
 import urllib.parse
+import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import corpus  # noqa: E402
@@ -162,6 +165,22 @@ def main():
         gh.repos["teamA/new-season"]["private"] = True
         corpus.update(gh, today="2026-10-24")
         assert "teamA/new-season" not in listed()
+
+        # A dropped connection is retried instead of crashing the run.
+        real_urlopen, real_sleep, drops = urllib.request.urlopen, corpus.time.sleep, []
+
+        def flaky_urlopen(req, timeout=None):
+            if not drops:
+                drops.append(1)
+                raise http.client.RemoteDisconnected("Remote end closed connection without response")
+            return io.BytesIO(b'{"ok": true}')
+
+        urllib.request.urlopen, corpus.time.sleep = flaky_urlopen, lambda s: None
+        try:
+            assert corpus.GitHub().get("/x") == {"ok": True}
+        finally:
+            urllib.request.urlopen, corpus.time.sleep = real_urlopen, real_sleep
+        assert drops
 
         assert corpus.normalize("github.com/a/b/tree/main") == "a/b"
         assert corpus.pros_version(pros("2.1.2")) == "2.1.2"

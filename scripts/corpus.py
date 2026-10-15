@@ -22,6 +22,7 @@ import base64
 import csv
 import datetime
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -103,7 +104,7 @@ class GitHub:
                     time.sleep(10 * (attempt + 1))
                     continue
                 return None
-            except (urllib.error.URLError, TimeoutError, ValueError):
+            except (urllib.error.URLError, http.client.HTTPException, ConnectionError, TimeoutError, ValueError):
                 time.sleep(10 * (attempt + 1))
         raise RuntimeError("GitHub kept failing")
 
